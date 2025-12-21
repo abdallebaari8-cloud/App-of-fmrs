@@ -1,0 +1,8 @@
+{
+  "name": "Beeraleyda Soomaaliya (Somali Farmers Market)",
+  "description": "A direct-to-consumer marketplace connecting rural Somali farmers with urban customers, optimized for low bandwidth and high accessibility.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
