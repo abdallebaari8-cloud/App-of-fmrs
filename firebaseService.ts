@@ -4,9 +4,26 @@ import { Product, Order, User } from "./types.ts";
  * --- LOCAL PERSISTENCE ENGINE ---
  * This app is now purely frontend-driven using LocalStorage.
  */
-const STORAGE_KEY_PRODUCTS = 'beeraleyda_products_v11'; // Bumped to v11 to force refresh and remove products
+const STORAGE_KEY_PRODUCTS = 'beeraleyda_products_v11';
 const STORAGE_KEY_ORDERS = 'beeraleyda_orders_v1';
 const STORAGE_KEY_USERS = 'beeraleyda_users_v1';
+
+const safeGetItem = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    console.warn(`LocalStorage access denied for key: ${key}`);
+    return null;
+  }
+};
+
+const safeSetItem = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    console.error(`LocalStorage write failed for key: ${key}`, e);
+  }
+};
 
 const getInitialProducts = (): Product[] => {
   return [
@@ -31,21 +48,35 @@ const getInitialProducts = (): Product[] => {
 };
 
 const getLocalProducts = (): Product[] => {
-  const stored = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-  if (stored) return JSON.parse(stored);
+  const stored = safeGetItem(STORAGE_KEY_PRODUCTS);
+  try {
+    if (stored) return JSON.parse(stored);
+  } catch (e) {
+    console.error("Corrupted product data in storage.");
+  }
   const initial = getInitialProducts();
-  localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(initial));
+  safeSetItem(STORAGE_KEY_PRODUCTS, JSON.stringify(initial));
   return initial;
 };
 
 const getLocalOrders = (): Order[] => {
-  const stored = localStorage.getItem(STORAGE_KEY_ORDERS);
-  return stored ? JSON.parse(stored) : [];
+  const stored = safeGetItem(STORAGE_KEY_ORDERS);
+  try {
+    return stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    console.error("Corrupted order data in storage.");
+    return [];
+  }
 };
 
 const getLocalUsers = (): (User & { password?: string })[] => {
-  const stored = localStorage.getItem(STORAGE_KEY_USERS);
-  return stored ? JSON.parse(stored) : [];
+  const stored = safeGetItem(STORAGE_KEY_USERS);
+  try {
+    return stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    console.error("Corrupted user data in storage.");
+    return [];
+  }
 };
 
 let localProductListeners: ((p: Product[]) => void)[] = [];
@@ -72,7 +103,7 @@ export const addProductToDB = async (product: Omit<Product, 'id'>) => {
   const id = 'local-p-' + Date.now();
   const newP = { ...product, id };
   products.push(newP as Product);
-  localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
+  safeSetItem(STORAGE_KEY_PRODUCTS, JSON.stringify(products));
   localProductListeners.forEach(l => l([...products]));
   return id;
 };
@@ -82,7 +113,7 @@ export const placeOrderInDB = async (order: Omit<Order, 'id'>) => {
   const id = 'local-o-' + Date.now();
   const newO = { ...order, id };
   orders.push(newO as Order);
-  localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
+  safeSetItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
   localOrderListeners.forEach(l => l([...orders]));
   return id;
 };
@@ -91,7 +122,7 @@ export const placeOrderInDB = async (order: Omit<Order, 'id'>) => {
 export const registerUserLocal = async (user: User & { password?: string }) => {
   const users = getLocalUsers();
   users.push(user);
-  localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+  safeSetItem(STORAGE_KEY_USERS, JSON.stringify(users));
   return user;
 };
 
@@ -110,7 +141,7 @@ export const updatePasswordLocal = async (email: string, newPass: string): Promi
   const index = users.findIndex(u => u.email === email);
   if (index !== -1) {
     users[index].password = newPass;
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+    safeSetItem(STORAGE_KEY_USERS, JSON.stringify(users));
     return true;
   }
   return false;

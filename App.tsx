@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { Language, UserRole, Product, Order, User, ViewType } from './types.ts';
@@ -43,9 +42,9 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
       const serviceId = "YOUR_SERVICE_ID";
       const templateId = "YOUR_TEMPLATE_ID";
 
-      // If placeholders are still present, skip and use manual fallback
-      if (serviceId === "YOUR_SERVICE_ID" || templateId === "YOUR_TEMPLATE_ID") {
-        throw new Error("Placeholder configuration detected");
+      // Safety check for global emailjs object
+      if (typeof emailjs === 'undefined' || serviceId === "YOUR_SERVICE_ID" || templateId === "YOUR_TEMPLATE_ID") {
+        throw new Error("Placeholder configuration or script missing");
       }
 
       await emailjs.send(serviceId, templateId, {
@@ -56,7 +55,7 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
       setForgotStep('code');
       setUseManualMethod(false);
     } catch (err) {
-      console.info("EmailJS: Using manual fallback method.");
+      console.info("Auth: Switching to manual email fallback.");
       setUseManualMethod(true);
       setForgotStep('code');
     } finally {
@@ -75,7 +74,7 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
     setError(null);
 
     if (mode === 'register') {
-      if (formData.password !== formData.confirmPassword) {
+      if (!formData.password || formData.password !== formData.confirmPassword) {
         setError(t.passwordMismatch);
         return;
       }
@@ -160,8 +159,8 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
 
             {mode !== 'forgot' && (
               <div className="flex gap-4 mb-8 bg-gray-100 p-1 rounded-2xl">
-                <button onClick={() => setRole(UserRole.CUSTOMER)} className={`flex-1 py-3.5 rounded-xl font-black transition-all ${role === UserRole.CUSTOMER ? 'bg-white shadow-md text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>{t.customerLogin}</button>
-                <button onClick={() => setRole(UserRole.FARMER)} className={`flex-1 py-3.5 rounded-xl font-black transition-all ${role === UserRole.FARMER ? 'bg-white shadow-md text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>{t.farmerLogin}</button>
+                <button type="button" onClick={() => setRole(UserRole.CUSTOMER)} className={`flex-1 py-3.5 rounded-xl font-black transition-all ${role === UserRole.CUSTOMER ? 'bg-white shadow-md text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>{t.customerLogin}</button>
+                <button type="button" onClick={() => setRole(UserRole.FARMER)} className={`flex-1 py-3.5 rounded-xl font-black transition-all ${role === UserRole.FARMER ? 'bg-white shadow-md text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>{t.farmerLogin}</button>
               </div>
             )}
 
@@ -170,16 +169,16 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
                 <>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.nameLabel}</label>
-                    <input required value={formData.name} onChange={e => updateForm('name', e.target.value)} type="text" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
+                    <input id="reg-name" name="name" required value={formData.name} onChange={e => updateForm('name', e.target.value)} type="text" autoComplete="name" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.countryLabel}</label>
-                      <input readOnly value={formData.country} className="w-full p-5 bg-gray-100 border-2 border-gray-100 rounded-3xl text-gray-500 cursor-not-allowed outline-none font-bold" />
+                      <input id="reg-country" name="country" readOnly value={formData.country} className="w-full p-5 bg-gray-100 border-2 border-gray-100 rounded-3xl text-gray-500 cursor-not-allowed outline-none font-bold" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.cityLabel}</label>
-                      <input required value={formData.city} onChange={e => updateForm('city', e.target.value)} type="text" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
+                      <input id="reg-city" name="city" required value={formData.city} onChange={e => updateForm('city', e.target.value)} type="text" autoComplete="address-level2" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
                     </div>
                   </div>
                 </>
@@ -188,7 +187,7 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
               {(mode !== 'forgot' || forgotStep === 'email') && (
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.emailLabel}</label>
-                  <input required value={formData.email} onChange={e => updateForm('email', e.target.value)} type="email" placeholder="example@gmail.com" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold text-lg" />
+                  <input id="auth-email" name="email" required value={formData.email} onChange={e => updateForm('email', e.target.value)} type="email" autoComplete="email" placeholder="example@gmail.com" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold text-lg" />
                 </div>
               )}
 
@@ -196,16 +195,12 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
                 <div className="space-y-6">
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.verificationCodeLabel}</label>
-                    <input required value={formData.verificationCode} onChange={e => updateForm('verificationCode', e.target.value)} type="text" maxLength={4} placeholder="0000" className="w-full p-6 bg-gray-50 border-4 border-gray-100 rounded-[2rem] focus:border-green-500 outline-none transition text-center text-4xl font-black tracking-[1.5rem] shadow-inner" />
+                    <input id="otp-code" name="verificationCode" required value={formData.verificationCode} onChange={e => updateForm('verificationCode', e.target.value)} type="text" maxLength={4} placeholder="0000" className="w-full p-6 bg-gray-50 border-4 border-gray-100 rounded-[2rem] focus:border-green-500 outline-none transition text-center text-4xl font-black tracking-[1.5rem] shadow-inner" />
                   </div>
                   
                   {useManualMethod && (
                     <div className="p-6 bg-yellow-50 border-2 border-yellow-100 rounded-[2rem] space-y-4">
-                      <p className="text-sm font-bold text-yellow-800 leading-tight">
-                        {lang === Language.SOMALI 
-                          ? "Sababo amni awgeed, fadlan riix badhanka hoose si aad code-ka ugu soo dirto email-kaaga adiga oo isticmaalaya App-kaaga."
-                          : "For security, please click below to send the verification code to yourself using your email app."}
-                      </p>
+                      <p className="text-sm font-bold text-yellow-800 leading-tight">{t.emailInstruction}</p>
                       <button type="button" onClick={handleMailtoFallback} className="w-full py-4 bg-white border-2 border-yellow-500 text-yellow-700 rounded-2xl font-black text-sm hover:bg-yellow-600 hover:text-white transition-all flex items-center justify-center gap-2">
                         <span>📧</span> {t.sendViaApp}
                       </button>
@@ -218,11 +213,11 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
                 <>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.newPasswordLabel}</label>
-                    <input required value={formData.newPassword} onChange={e => updateForm('newPassword', e.target.value)} type="password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
+                    <input id="forgot-new-pass" name="newPassword" required value={formData.newPassword} onChange={e => updateForm('newPassword', e.target.value)} type="password" autoComplete="new-password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.confirmNewPasswordLabel}</label>
-                    <input required value={formData.confirmNewPassword} onChange={e => updateForm('confirmNewPassword', e.target.value)} type="password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
+                    <input id="forgot-confirm-pass" name="confirmNewPassword" required value={formData.confirmNewPassword} onChange={e => updateForm('confirmNewPassword', e.target.value)} type="password" autoComplete="new-password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
                   </div>
                 </>
               )}
@@ -230,14 +225,34 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
               {mode !== 'forgot' && (
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.passwordLabel}</label>
-                  <input required value={formData.password} onChange={e => updateForm('password', e.target.value)} type="password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
+                  <input 
+                    id="auth-password" 
+                    name="password" 
+                    required 
+                    value={formData.password} 
+                    onChange={e => updateForm('password', e.target.value)} 
+                    type="password" 
+                    autoComplete={mode === 'register' ? "new-password" : "current-password"} 
+                    placeholder="••••••••" 
+                    className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" 
+                  />
                 </div>
               )}
 
               {mode === 'register' && (
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.confirmPasswordLabel}</label>
-                  <input required value={formData.password} onChange={e => updateForm('password', e.target.value)} type="password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
+                  <input 
+                    id="reg-confirm-password" 
+                    name="confirmPassword" 
+                    required 
+                    value={formData.confirmPassword} 
+                    onChange={e => updateForm('confirmPassword', e.target.value)} 
+                    type="password" 
+                    autoComplete="new-password" 
+                    placeholder="••••••••" 
+                    className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" 
+                  />
                 </div>
               )}
 
@@ -271,11 +286,11 @@ const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCance
 
             <div className="mt-12 text-center">
               {mode === 'login' ? (
-                <button onClick={() => { setMode('register'); setError(null); }} className="text-green-600 font-black hover:underline text-lg">
+                <button type="button" onClick={() => { setMode('register'); setError(null); }} className="text-green-600 font-black hover:underline text-lg">
                   {t.noAccount}
                 </button>
               ) : (
-                <button onClick={() => { setMode('login'); setForgotStep('email'); setError(null); setUseManualMethod(false); }} className="text-green-600 font-black hover:underline text-lg">
+                <button type="button" onClick={() => { setMode('login'); setForgotStep('email'); setError(null); setUseManualMethod(false); }} className="text-green-600 font-black hover:underline text-lg">
                   {t.haveAccount}
                 </button>
               )}
