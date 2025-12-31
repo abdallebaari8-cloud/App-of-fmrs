@@ -1,12 +1,27 @@
+
 <!DOCTYPE html>
 <html lang="so">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Beeraleyda Soomaaliya</title>
+    <!-- Favicon data-uri to prevent 404 console errors -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌾</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Polyfill process.env safely to preserve injected keys -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script type="text/javascript">
+        (function() {
+            // Only initialize if the key has been changed from the placeholder
+            const publicKey = "YOUR_PUBLIC_KEY";
+            if (publicKey && publicKey !== "YOUR_PUBLIC_KEY") {
+                emailjs.init(publicKey);
+            } else {
+                console.info("EmailJS: Public Key is placeholder. Email features will use manual fallback.");
+            }
+        })();
+    </script>
+    <!-- Polyfill process.env safely -->
     <script>
       window.process = window.process || {};
       window.process.env = window.process.env || {};
@@ -14,7 +29,11 @@
     <style>
         body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background-color: #ffffff; overflow-x: hidden; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        .scale-in { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .shake { animation: shake 0.2s ease-in-out 0s 2; }
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #16a34a; border-radius: 10px; }
