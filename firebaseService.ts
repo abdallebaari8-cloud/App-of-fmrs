@@ -1,59 +1,67 @@
-import { Product, Order, User } from "./types.ts";
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  onAuthStateChanged, 
+  signOut,
+  sendEmailVerification,
+  User as FirebaseUser
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { Product, Order, User, UserRole } from "./types.ts";
+
+// Firebase configuration provided by the user
+const firebaseConfig = {
+  apiKey: "AIzaSyAsnyW-UDRyV29q5LbLA5lV54HgPzDFtBw",
+  authDomain: "somali-farmer.firebaseapp.com",
+  projectId: "somali-farmer",
+  storageBucket: "somali-farmer.firebasestorage.app",
+  messagingSenderId: "147562130662",
+  appId: "1:147562130662:web:64135db7f6791085d1df27"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
 
 /** 
- * --- LOCAL PERSISTENCE ENGINE ---
- * This app is now purely frontend-driven using LocalStorage.
+ * --- LOCAL PERSISTENCE ENGINE (Non-Auth Data) ---
  */
 const STORAGE_KEY_PRODUCTS = 'beeraleyda_products_v11';
 const STORAGE_KEY_ORDERS = 'beeraleyda_orders_v1';
-const STORAGE_KEY_USERS = 'beeraleyda_users_v1';
 
 const safeGetItem = (key: string): string | null => {
-  try {
-    return localStorage.getItem(key);
-  } catch (e) {
-    console.warn(`LocalStorage access denied for key: ${key}`);
-    return null;
-  }
+  try { return localStorage.getItem(key); } catch (e) { return null; }
 };
 
 const safeSetItem = (key: string, value: string) => {
-  try {
-    localStorage.setItem(key, value);
-  } catch (e) {
-    console.error(`LocalStorage write failed for key: ${key}`, e);
-  }
+  try { localStorage.setItem(key, value); } catch (e) {}
 };
 
-const getInitialProducts = (): Product[] => {
-  return [
-    { id: 'm1', name: 'Moos', nameEn: 'Bananas', category: 'Fruit', price: 0.8, unit: 'kg', quantity: 200, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Jannaale', image: 'https://images.unsplash.com/photo-1528825871115-3581a5387919?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm2', name: 'Tamaandho', nameEn: 'Tomatoes', category: 'Vegetables', price: 1.5, unit: 'kg', quantity: 50, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm3', name: 'Basal', nameEn: 'Onions', category: 'Vegetables', price: 1.2, unit: 'kg', quantity: 150, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Jannaale', image: 'https://images.unsplash.com/photo-1508747703725-719777637510?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm5', name: 'Galley', nameEn: 'Corn', category: 'Vegetables', price: 1.0, unit: 'kg', quantity: 300, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Lower Shabelle', image: 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm7', name: 'Karooto', nameEn: 'Carrots', category: 'Vegetables', price: 1.1, unit: 'kg', quantity: 120, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm8', name: 'Baradho', nameEn: 'Potatoes', category: 'Vegetables', price: 0.9, unit: 'kg', quantity: 500, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Baidoa', image: 'https://images.unsplash.com/photo-1508313880080-c4bef0730395?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm12', name: 'Bamiye', nameEn: 'Okra', category: 'Vegetables', price: 2.2, unit: 'kg', quantity: 45, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Baidoa', image: 'https://images.unsplash.com/photo-1464454709131-ffd692591ee5?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm13', name: 'Girin', nameEn: 'Wheat', category: 'Grains', price: 1.2, unit: 'kg', quantity: 400, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Jowhar', image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm14', name: 'Digir', nameEn: 'Beans', category: 'Legumes', price: 1.8, unit: 'kg', quantity: 250, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Baidoa', image: 'https://images.unsplash.com/photo-1599599810769-bcde5a160d32?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm15', name: 'Khayaar', nameEn: 'Cucumber', category: 'Vegetables', price: 0.7, unit: 'kg', quantity: 80, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1604977042946-1eecc30f269e?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm16', name: 'Toon', nameEn: 'Garlic', category: 'Vegetables', price: 3.5, unit: 'kg', quantity: 40, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Jowhar', image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm17', name: 'Liin Dhanaan', nameEn: 'Lemon', category: 'Fruit', price: 1.2, unit: 'kg', quantity: 100, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Jannaale', image: 'https://images.unsplash.com/photo-1590502593747-42a996133562?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm18', name: 'Liin Macaan', nameEn: 'Orange', category: 'Fruit', price: 2.0, unit: 'kg', quantity: 150, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1547514701-42782101795e?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm20', name: 'Canab', nameEn: 'Grapes', category: 'Fruit', price: 5.0, unit: 'kg', quantity: 30, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Sool', image: 'https://images.unsplash.com/photo-1423483641154-5411ec9c0ddf?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm21', name: 'Xabxab', nameEn: 'Watermelon', category: 'Fruit', price: 3.0, unit: 'piece', quantity: 60, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Lower Shabelle', image: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm22', name: 'Canbe', nameEn: 'Mango', category: 'Fruit', price: 1.2, unit: 'kg', quantity: 100, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1553279768-865429fa0078?auto=format&fit=crop&w=800&q=80', verified: true },
-    { id: 'm24', name: 'Tufaax', nameEn: 'Apple', category: 'Fruit', price: 4.0, unit: 'kg', quantity: 50, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Hiran', image: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=800&q=80', verified: true }
-  ];
-};
+const getInitialProducts = (): Product[] => [
+  { id: 'm1', name: 'Moos', nameEn: 'Bananas', category: 'Fruit', price: 0.8, unit: 'kg', quantity: 200, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Jannaale', image: 'https://images.unsplash.com/photo-1528825871115-3581a5387919?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm2', name: 'Tamaandho', nameEn: 'Tomatoes', category: 'Vegetables', price: 1.5, unit: 'kg', quantity: 50, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm3', name: 'Basal', nameEn: 'Onions', category: 'Vegetables', price: 1.2, unit: 'kg', quantity: 150, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Jannaale', image: 'https://images.unsplash.com/photo-1508747703725-719777637510?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm5', name: 'Galley', nameEn: 'Corn', category: 'Vegetables', price: 1.0, unit: 'kg', quantity: 300, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Lower Shabelle', image: 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm7', name: 'Karooto', nameEn: 'Carrots', category: 'Vegetables', price: 1.1, unit: 'kg', quantity: 120, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm8', name: 'Baradho', nameEn: 'Potatoes', category: 'Vegetables', price: 0.9, unit: 'kg', quantity: 500, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Baidoa', image: 'https://images.unsplash.com/photo-1508313880080-c4bef0730395?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm12', name: 'Istoroberi', nameEn: 'Strawberry', category: 'Vegetables', price: 2.2, unit: 'kg', quantity: 45, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Baidoa', image: 'https://images.unsplash.com/photo-1464454709131-ffd692591ee5?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm13', name: 'Girin', nameEn: 'Wheat', category: 'Grains', price: 1.2, unit: 'kg', quantity: 400, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Jowhar', image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm14', name: 'Digir', nameEn: 'Beans', category: 'Legumes', price: 1.8, unit: 'kg', quantity: 250, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Baidoa', image: 'https://images.unsplash.com/photo-1599599810769-bcde5a160d32?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm15', name: 'Khayaar', nameEn: 'Cucumber', category: 'Vegetables', price: 0.7, unit: 'kg', quantity: 80, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1604977042946-1eecc30f269e?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm16', name: 'Toon', nameEn: 'Garlic', category: 'Vegetables', price: 3.5, unit: 'kg', quantity: 40, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Jowhar', image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm17', name: 'Liin Dhanaan', nameEn: 'Lemon', category: 'Fruit', price: 1.2, unit: 'kg', quantity: 100, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Jannaale', image: 'https://images.unsplash.com/photo-1590502593747-42a996133562?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm18', name: 'Liin Macaan', nameEn: 'Orange', category: 'Fruit', price: 2.0, unit: 'kg', quantity: 150, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1547514701-42782101795e?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm20', name: 'Canab', nameEn: 'Grapes', category: 'Fruit', price: 5.0, unit: 'kg', quantity: 30, farmerId: 'f3', farmerName: 'Hassan Nur', location: 'Sool', image: 'https://images.unsplash.com/photo-1423483641154-5411ec9c0ddf?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm21', name: 'Xabxab', nameEn: 'Watermelon', category: 'Fruit', price: 3.0, unit: 'piece', quantity: 60, farmerId: 'f4', farmerName: 'Sahra Ahmed', location: 'Lower Shabelle', image: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm22', name: 'Canbe', nameEn: 'Mango', category: 'Fruit', price: 1.2, unit: 'kg', quantity: 100, farmerId: 'f2', farmerName: 'Maryan Ali', location: 'Afgooye', image: 'https://images.unsplash.com/photo-1553279768-865429fa0078?auto=format&fit=crop&w=800&q=80', verified: true },
+  { id: 'm24', name: 'Tufaax', nameEn: 'Apple', category: 'Fruit', price: 4.0, unit: 'kg', quantity: 50, farmerId: 'f1', farmerName: 'Abdi Farah', location: 'Hiran', image: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=800&q=80', verified: true }
+];
 
 const getLocalProducts = (): Product[] => {
   const stored = safeGetItem(STORAGE_KEY_PRODUCTS);
-  try {
-    if (stored) return JSON.parse(stored);
-  } catch (e) {
-    console.error("Corrupted product data in storage.");
-  }
+  try { if (stored) return JSON.parse(stored); } catch (e) {}
   const initial = getInitialProducts();
   safeSetItem(STORAGE_KEY_PRODUCTS, JSON.stringify(initial));
   return initial;
@@ -61,22 +69,7 @@ const getLocalProducts = (): Product[] => {
 
 const getLocalOrders = (): Order[] => {
   const stored = safeGetItem(STORAGE_KEY_ORDERS);
-  try {
-    return stored ? JSON.parse(stored) : [];
-  } catch (e) {
-    console.error("Corrupted order data in storage.");
-    return [];
-  }
-};
-
-const getLocalUsers = (): (User & { password?: string })[] => {
-  const stored = safeGetItem(STORAGE_KEY_USERS);
-  try {
-    return stored ? JSON.parse(stored) : [];
-  } catch (e) {
-    console.error("Corrupted user data in storage.");
-    return [];
-  }
+  try { return stored ? JSON.parse(stored) : []; } catch (e) { return []; }
 };
 
 let localProductListeners: ((p: Product[]) => void)[] = [];
@@ -85,17 +78,13 @@ let localOrderListeners: ((o: Order[]) => void)[] = [];
 export const subscribeToProducts = (callback: (products: Product[]) => void) => {
   callback(getLocalProducts());
   localProductListeners.push(callback);
-  return () => { 
-    localProductListeners = localProductListeners.filter(l => l !== callback); 
-  };
+  return () => { localProductListeners = localProductListeners.filter(l => l !== callback); };
 };
 
 export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
   callback(getLocalOrders());
   localOrderListeners.push(callback);
-  return () => { 
-    localOrderListeners = localOrderListeners.filter(l => l !== callback); 
-  };
+  return () => { localOrderListeners = localOrderListeners.filter(l => l !== callback); };
 };
 
 export const addProductToDB = async (product: Omit<Product, 'id'>) => {
@@ -118,31 +107,50 @@ export const placeOrderInDB = async (order: Omit<Order, 'id'>) => {
   return id;
 };
 
-// Simulated Auth Methods
-export const registerUserLocal = async (user: User & { password?: string }) => {
-  const users = getLocalUsers();
-  users.push(user);
-  safeSetItem(STORAGE_KEY_USERS, JSON.stringify(users));
+/**
+ * --- FIREBASE AUTHENTICATION WRAPPERS ---
+ */
+export const onAuthChange = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
+    if (fbUser) {
+      // Only treat as logged in if email is verified
+      if (!fbUser.emailVerified) {
+        // We do not treat them as authenticated in the app state if not verified
+        callback(null);
+        return;
+      }
+
+      callback({
+        id: fbUser.uid,
+        name: fbUser.displayName || fbUser.email?.split('@')[0] || "User",
+        email: fbUser.email || "",
+        role: UserRole.CUSTOMER,
+        location: "Mogadishu"
+      });
+    } else {
+      callback(null);
+    }
+  });
+};
+
+export const loginWithFirebase = async (email: string, pass: string) => {
+  const credential = await signInWithEmailAndPassword(auth, email, pass);
+  return credential.user;
+};
+
+export const registerWithFirebase = async (email: string, pass: string) => {
+  const credential = await createUserWithEmailAndPassword(auth, email, pass);
+  const user = credential.user;
+  
+  // Send verification email
+  await sendEmailVerification(user);
+  
+  // Sign out immediately so they must verify and then log in
+  await signOut(auth);
+  
   return user;
 };
 
-export const loginUserLocal = async (email: string, pass: string): Promise<User | null> => {
-  const users = getLocalUsers();
-  const found = users.find(u => u.email === email && u.password === pass);
-  if (found) {
-    const { password, ...userWithoutPass } = found;
-    return userWithoutPass;
-  }
-  return null;
-};
-
-export const updatePasswordLocal = async (email: string, newPass: string): Promise<boolean> => {
-  const users = getLocalUsers();
-  const index = users.findIndex(u => u.email === email);
-  if (index !== -1) {
-    users[index].password = newPass;
-    safeSetItem(STORAGE_KEY_USERS, JSON.stringify(users));
-    return true;
-  }
-  return false;
+export const logoutFromFirebase = async () => {
+  await signOut(auth);
 };

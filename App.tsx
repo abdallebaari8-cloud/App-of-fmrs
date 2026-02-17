@@ -1,302 +1,142 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { Language, UserRole, Product, Order, User, ViewType } from './types.ts';
 import { translations } from './translations.ts';
 import { getAIPitch, findProductsForNeeds } from './geminiService.ts';
-import { subscribeToProducts, subscribeToOrders, addProductToDB, placeOrderInDB, registerUserLocal, loginUserLocal, updatePasswordLocal } from './firebaseService.ts';
+import { 
+  subscribeToProducts, 
+  subscribeToOrders, 
+  addProductToDB, 
+  placeOrderInDB,
+  onAuthChange,
+  loginWithFirebase,
+  registerWithFirebase,
+  logoutFromFirebase,
+  auth
+} from './firebaseService.ts';
 
-// External declaration for EmailJS (loaded in index.html)
-declare var emailjs: any;
-
-type AuthMode = 'login' | 'register' | 'forgot';
-type ForgotStep = 'email' | 'code' | 'reset' | 'success';
-
-// Component for Authentication
-const AuthScreen: React.FC<{ lang: Language, onLogin: (u: User) => void, onCancel: () => void }> = ({ lang, onLogin, onCancel }) => {
+const AuthScreen: React.FC<{ lang: Language, onCancel: () => void }> = ({ lang, onCancel }) => {
   const t = translations[lang];
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [forgotStep, setForgotStep] = useState<ForgotStep>('email');
-  const [role, setRole] = useState<UserRole>(UserRole.CUSTOMER);
-  const [generatedCode, setGeneratedCode] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [useManualMethod, setUseManualMethod] = useState(false);
+  const [isRegister, setIsRegister] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    country: 'Somalia',
-    city: '',
-    verificationCode: '',
-    newPassword: '',
-    confirmNewPassword: ''
-  });
-  
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSendRealEmail = async (email: string, code: string) => {
-    setIsSending(true);
-    setError(null);
-    try {
-      const serviceId = "YOUR_SERVICE_ID";
-      const templateId = "YOUR_TEMPLATE_ID";
-
-      // Safety check for global emailjs object
-      if (typeof emailjs === 'undefined' || serviceId === "YOUR_SERVICE_ID" || templateId === "YOUR_TEMPLATE_ID") {
-        throw new Error("Placeholder configuration or script missing");
-      }
-
-      await emailjs.send(serviceId, templateId, {
-        to_email: email,
-        otp_code: code,
-        app_name: t.appName
-      });
-      setForgotStep('code');
-      setUseManualMethod(false);
-    } catch (err) {
-      console.info("Auth: Switching to manual email fallback.");
-      setUseManualMethod(true);
-      setForgotStep('code');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleMailtoFallback = () => {
-    const subject = encodeURIComponent(`${t.appName}: ${t.verifyCodeTitle} - ${generatedCode}`);
-    const body = encodeURIComponent(`Ka: ${t.appName}\n\nKoodhkaaga xaqiijinta waa: ${generatedCode}\n\nFadlan isticmaal koodhkan si aad u beddesho furahaaga sirta ah.`);
-    window.location.href = `mailto:${formData.email}?subject=${subject}&body=${body}`;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-
-    if (mode === 'register') {
-      if (!formData.password || formData.password !== formData.confirmPassword) {
-        setError(t.passwordMismatch);
-        return;
-      }
-      const newUser: User & { password?: string } = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: formData.name,
-        email: formData.email,
-        role: role,
-        location: `${formData.city}, ${formData.country}`,
-        password: formData.password
-      };
-      await registerUserLocal(newUser);
-      const { password, ...safeUser } = newUser;
-      onLogin(safeUser);
-    } else if (mode === 'login') {
-      const user = await loginUserLocal(formData.email, formData.password);
-      if (user) {
-        onLogin(user);
+    setError('');
+    setLoading(true);
+    try {
+      if (isRegister) {
+        const user = await registerWithFirebase(email, password);
+        setVerificationEmail(user.email || email);
+        setNeedsVerification(true);
       } else {
-        setError(t.authError);
-      }
-    } else if (mode === 'forgot') {
-      if (forgotStep === 'email') {
-        const code = Math.floor(1000 + Math.random() * 9000).toString();
-        setGeneratedCode(code);
-        await handleSendRealEmail(formData.email, code);
-      } else if (forgotStep === 'code') {
-        if (formData.verificationCode === generatedCode) {
-          setForgotStep('reset');
-        } else {
-          setError(t.invalidCode);
-        }
-      } else if (forgotStep === 'reset') {
-        if (formData.newPassword !== formData.confirmNewPassword) {
-          setError(t.passwordMismatch);
-          return;
-        }
-        const success = await updatePasswordLocal(formData.email, formData.newPassword);
-        if (success) {
-          setForgotStep('success');
-        } else {
-          setError(t.authError);
+        const user = await loginWithFirebase(email, password);
+        if (!user.emailVerified) {
+          setVerificationEmail(user.email || email);
+          setNeedsVerification(true);
+          await logoutFromFirebase();
         }
       }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Auth error");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const updateForm = (field: string, val: string) => {
-    setFormData(prev => ({ ...prev, [field]: val }));
-  };
+  if (needsVerification) {
+    return (
+      <div className="fixed inset-0 bg-white z-[60] flex items-center justify-center p-6 fade-in overflow-y-auto">
+        <div className="max-w-md w-full text-center py-10">
+          <div className="scale-in">
+            <div className="text-7xl mb-6">📧</div>
+            <h2 className="text-5xl font-black mb-6 tracking-tighter leading-none">
+              {t.verifyEmailTitle}
+            </h2>
+            <p className="text-gray-500 mb-10 font-medium text-xl leading-relaxed">
+              {t.verifyEmailSent.replace('[email]', verificationEmail)}
+            </p>
 
-  const getTitle = () => {
-    if (mode === 'register') return t.registerTitle;
-    if (mode === 'forgot') {
-      if (forgotStep === 'code') return t.verifyCodeTitle;
-      if (forgotStep === 'reset') return t.changePasswordTitle;
-      if (forgotStep === 'success') return t.passwordChanged;
-      return t.resetTitle;
-    }
-    return t.loginTitle;
-  };
+            <button 
+              onClick={() => {
+                setNeedsVerification(false);
+                setIsRegister(false);
+              }}
+              className="w-full py-7 bg-green-600 text-white rounded-[2.5rem] font-black text-2xl shadow-xl hover:bg-green-700 transition-all active:scale-95 mt-4"
+            >
+              {t.loginButton}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-white z-[60] flex items-center justify-center p-6 fade-in overflow-y-auto">
-      <div className="max-w-md w-full py-12">
-        <button onClick={onCancel} className="mb-8 text-green-600 font-bold flex items-center gap-2 hover:translate-x-[-4px] transition-transform">← {t.backToLogin}</button>
+      <div className="max-w-md w-full text-center py-10">
+        <button onClick={onCancel} className="mb-8 text-green-600 font-bold flex items-center gap-2 hover:translate-x-[-4px] transition-transform mx-auto">
+          ← {t.backToLogin}
+        </button>
         
-        {forgotStep === 'success' && mode === 'forgot' ? (
-          <div className="text-center py-12 px-6 bg-green-50 rounded-[3rem] border-2 border-green-100 scale-in shadow-sm">
-            <div className="text-7xl mb-6">✅</div>
-            <h2 className="text-3xl font-black text-green-900 mb-4 tracking-tighter">{t.passwordChanged}</h2>
-            <button onClick={() => { setMode('login'); setForgotStep('email'); }} className="mt-6 text-green-600 font-black underline">{t.backToLogin}</button>
-          </div>
-        ) : (
-          <div className="scale-in">
-            <h2 className="text-5xl font-black mb-3 tracking-tighter leading-none">{getTitle()}</h2>
-            <p className="text-gray-400 mb-8 font-medium text-lg leading-tight">
-              {mode === 'forgot' && forgotStep === 'code' ? t.verifyCodeSubtitle : mode === 'forgot' && forgotStep === 'reset' ? t.changePasswordSubtitle : mode === 'register' ? t.registerSubtitle : t.loginSubtitle}
-            </p>
+        <div className="scale-in">
+          <div className="text-7xl mb-6">👋</div>
+          <h2 className="text-5xl font-black mb-2 tracking-tighter leading-none">
+            {isRegister ? t.registerTitle : t.loginTitle}
+          </h2>
+          <p className="text-gray-400 mb-10 font-medium text-lg leading-tight">
+            {isRegister ? t.registerSubtitle : t.loginSubtitle}
+          </p>
 
-            {error && <div className="mb-6 p-5 bg-red-50 text-red-600 rounded-2xl font-black border border-red-100 shake flex items-center gap-3"><span>⚠️</span> {error}</div>}
-
-            {mode !== 'forgot' && (
-              <div className="flex gap-4 mb-8 bg-gray-100 p-1 rounded-2xl">
-                <button type="button" onClick={() => setRole(UserRole.CUSTOMER)} className={`flex-1 py-3.5 rounded-xl font-black transition-all ${role === UserRole.CUSTOMER ? 'bg-white shadow-md text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>{t.customerLogin}</button>
-                <button type="button" onClick={() => setRole(UserRole.FARMER)} className={`flex-1 py-3.5 rounded-xl font-black transition-all ${role === UserRole.FARMER ? 'bg-white shadow-md text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>{t.farmerLogin}</button>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {mode === 'register' && (
-                <>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.nameLabel}</label>
-                    <input id="reg-name" name="name" required value={formData.name} onChange={e => updateForm('name', e.target.value)} type="text" autoComplete="name" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.countryLabel}</label>
-                      <input id="reg-country" name="country" readOnly value={formData.country} className="w-full p-5 bg-gray-100 border-2 border-gray-100 rounded-3xl text-gray-500 cursor-not-allowed outline-none font-bold" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.cityLabel}</label>
-                      <input id="reg-city" name="city" required value={formData.city} onChange={e => updateForm('city', e.target.value)} type="text" autoComplete="address-level2" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {(mode !== 'forgot' || forgotStep === 'email') && (
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.emailLabel}</label>
-                  <input id="auth-email" name="email" required value={formData.email} onChange={e => updateForm('email', e.target.value)} type="email" autoComplete="email" placeholder="example@gmail.com" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold text-lg" />
-                </div>
-              )}
-
-              {mode === 'forgot' && forgotStep === 'code' && (
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.verificationCodeLabel}</label>
-                    <input id="otp-code" name="verificationCode" required value={formData.verificationCode} onChange={e => updateForm('verificationCode', e.target.value)} type="text" maxLength={4} placeholder="0000" className="w-full p-6 bg-gray-50 border-4 border-gray-100 rounded-[2rem] focus:border-green-500 outline-none transition text-center text-4xl font-black tracking-[1.5rem] shadow-inner" />
-                  </div>
-                  
-                  {useManualMethod && (
-                    <div className="p-6 bg-yellow-50 border-2 border-yellow-100 rounded-[2rem] space-y-4">
-                      <p className="text-sm font-bold text-yellow-800 leading-tight">{t.emailInstruction}</p>
-                      <button type="button" onClick={handleMailtoFallback} className="w-full py-4 bg-white border-2 border-yellow-500 text-yellow-700 rounded-2xl font-black text-sm hover:bg-yellow-600 hover:text-white transition-all flex items-center justify-center gap-2">
-                        <span>📧</span> {t.sendViaApp}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {mode === 'forgot' && forgotStep === 'reset' && (
-                <>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.newPasswordLabel}</label>
-                    <input id="forgot-new-pass" name="newPassword" required value={formData.newPassword} onChange={e => updateForm('newPassword', e.target.value)} type="password" autoComplete="new-password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.confirmNewPasswordLabel}</label>
-                    <input id="forgot-confirm-pass" name="confirmNewPassword" required value={formData.confirmNewPassword} onChange={e => updateForm('confirmNewPassword', e.target.value)} type="password" autoComplete="new-password" placeholder="••••••••" className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" />
-                  </div>
-                </>
-              )}
-
-              {mode !== 'forgot' && (
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.passwordLabel}</label>
-                  <input 
-                    id="auth-password" 
-                    name="password" 
-                    required 
-                    value={formData.password} 
-                    onChange={e => updateForm('password', e.target.value)} 
-                    type="password" 
-                    autoComplete={mode === 'register' ? "new-password" : "current-password"} 
-                    placeholder="••••••••" 
-                    className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" 
-                  />
-                </div>
-              )}
-
-              {mode === 'register' && (
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 px-1">{t.confirmPasswordLabel}</label>
-                  <input 
-                    id="reg-confirm-password" 
-                    name="confirmPassword" 
-                    required 
-                    value={formData.confirmPassword} 
-                    onChange={e => updateForm('confirmPassword', e.target.value)} 
-                    type="password" 
-                    autoComplete="new-password" 
-                    placeholder="••••••••" 
-                    className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none transition font-bold" 
-                  />
-                </div>
-              )}
-
-              {mode === 'login' && (
-                <div className="text-right">
-                  <button type="button" onClick={() => { setMode('forgot'); setForgotStep('email'); setError(null); }} className="text-xs font-black text-green-600 hover:underline uppercase tracking-widest">
-                    {t.forgotPassword}
-                  </button>
-                </div>
-              )}
-
-              <button 
-                type="submit" 
-                disabled={isSending}
-                className={`w-full py-6 bg-green-600 text-white rounded-[2.5rem] font-black text-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 ${isSending ? 'opacity-70 cursor-wait' : 'hover:bg-green-700 hover:-translate-y-1'}`}
-              >
-                {isSending ? (
-                  <>
-                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span className="text-lg">{t.sendingEmail}</span>
-                  </>
-                ) : (
-                  mode === 'register' 
-                    ? t.registerButton 
-                    : mode === 'forgot' 
-                      ? (forgotStep === 'email' ? t.sendResetLink : forgotStep === 'code' ? t.verifyButton : t.savePasswordButton) 
-                      : t.loginButton
-                )}
-              </button>
-            </form>
-
-            <div className="mt-12 text-center">
-              {mode === 'login' ? (
-                <button type="button" onClick={() => { setMode('register'); setError(null); }} className="text-green-600 font-black hover:underline text-lg">
-                  {t.noAccount}
-                </button>
-              ) : (
-                <button type="button" onClick={() => { setMode('login'); setForgotStep('email'); setError(null); setUseManualMethod(false); }} className="text-green-600 font-black hover:underline text-lg">
-                  {t.haveAccount}
-                </button>
-              )}
+          <form onSubmit={handleSubmit} className="space-y-4 text-left">
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2 ml-4">{t.emailLabel}</label>
+              <input 
+                required
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none font-bold text-lg transition"
+                placeholder="example@gmail.com"
+              />
             </div>
-          </div>
-        )}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2 ml-4">{t.passwordLabel}</label>
+              <input 
+                required
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full px-6 py-5 bg-gray-50 border-2 border-gray-100 rounded-3xl focus:border-green-500 outline-none font-bold text-lg transition"
+                placeholder="••••••••"
+              />
+            </div>
+
+            {error && <p className="text-red-500 text-sm font-bold px-4">{error}</p>}
+
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-7 bg-green-600 text-white rounded-[2.5rem] font-black text-2xl shadow-xl hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50 mt-4"
+            >
+              {loading ? "..." : (isRegister ? t.registerButton : t.loginButton)}
+            </button>
+          </form>
+
+          <button 
+            onClick={() => setIsRegister(!isRegister)}
+            className="mt-8 text-green-700 font-black text-sm hover:underline"
+          >
+            {isRegister ? t.haveAccount : t.noAccount}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -314,8 +154,14 @@ const ProductCard: React.FC<{ product: Product, lang: Language, onBuy: (p: Produ
       </div>
       <div className="p-8">
         <div className="flex justify-between items-start mb-4">
-          <div><h3 className="text-2xl font-black text-gray-900">{lang === Language.SOMALI ? product.name : product.nameEn}</h3><p className="text-xs font-bold text-green-600 uppercase tracking-widest mt-1">{product.category}</p></div>
-          <div className="text-right"><div className="text-3xl font-black text-green-600">${product.price}</div><div className="text-[10px] font-bold text-gray-400 uppercase">per {product.unit}</div></div>
+          <div>
+            <h3 className="text-2xl font-black text-gray-900">{lang === Language.SOMALI ? product.name : product.nameEn}</h3>
+            <p className="text-xs font-bold text-green-600 uppercase tracking-widest mt-1">{product.category}</p>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-black text-green-600">${product.price}</div>
+            <div className="text-[10px] font-bold text-gray-400 uppercase">per {product.unit}</div>
+          </div>
         </div>
         <p className="text-gray-500 text-sm italic mb-6 leading-relaxed">"{pitch || '...'}"</p>
         <button onClick={() => onBuy(product)} className="w-full py-4 bg-green-50 text-green-700 rounded-2xl font-black text-sm hover:bg-green-600 hover:text-white transition-all">{t.buyNow}</button>
@@ -324,7 +170,7 @@ const ProductCard: React.FC<{ product: Product, lang: Language, onBuy: (p: Produ
   );
 };
 
-const Marketplace: React.FC<{ lang: Language, products: Product[], onBuy: (p: Product) => void }> = ({ lang, products, onBuy }) => {
+const Marketplace: React.FC<{ lang: Language, products: Product[], onBuy: (p: Product) => void, hideHeader?: boolean }> = ({ lang, products, onBuy, hideHeader = false }) => {
   const t = translations[lang];
   const [query, setQuery] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -344,15 +190,27 @@ const Marketplace: React.FC<{ lang: Language, products: Product[], onBuy: (p: Pr
     : products.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.nameEn.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className="max-w-6xl mx-auto p-6 pt-12 pb-32 fade-in">
-      <div className="mb-16 text-center">
-        <h2 className="text-6xl font-black text-gray-900 tracking-tighter mb-4">{t.marketplace}</h2>
-        <p className="text-gray-400 font-bold text-lg">{t.tagline}</p>
-      </div>
+    <div className="max-w-6xl mx-auto p-6 pb-32 fade-in">
+      {!hideHeader && (
+        <div className="mb-16 text-center pt-12">
+          <h2 className="text-6xl font-black text-gray-900 tracking-tighter mb-4">{t.marketplace}</h2>
+          <p className="text-gray-400 font-bold text-lg">{t.tagline}</p>
+        </div>
+      )}
       <div className="mb-12 bg-green-50/50 p-8 rounded-[3rem] border-2 border-green-100/50">
         <form onSubmit={handleAISearch} className="flex flex-col md:flex-row gap-4">
-          <div className="flex-grow relative"><span className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl">✨</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder={t.aiPlaceholder} className="w-full pl-16 pr-6 py-5 bg-white border-2 border-green-100 rounded-3xl focus:border-green-500 outline-none font-bold text-lg transition shadow-sm" /></div>
-          <button type="submit" disabled={aiLoading} className="px-10 py-5 bg-green-600 text-white rounded-3xl font-black text-lg hover:bg-green-700 transition shadow-lg disabled:opacity-50">{aiLoading ? t.aiThinking : t.aiFind}</button>
+          <div className="flex-grow relative">
+            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-2xl">✨</span>
+            <input 
+              value={query} 
+              onChange={e => setQuery(e.target.value)} 
+              placeholder={t.aiPlaceholder} 
+              className="w-full pl-16 pr-6 py-5 bg-white border-2 border-green-100 rounded-3xl focus:border-green-500 outline-none font-bold text-lg transition shadow-sm" 
+            />
+          </div>
+          <button type="submit" disabled={aiLoading} className="px-10 py-5 bg-green-600 text-white rounded-3xl font-black text-lg hover:bg-green-700 transition shadow-lg disabled:opacity-50">
+            {aiLoading ? t.aiThinking : t.aiFind}
+          </button>
         </form>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -442,12 +300,23 @@ const Navbar: React.FC<{ lang: Language, setLang: (l: Language) => void, user: U
       <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
         <div className="flex items-center gap-2 md:gap-4">
           {!isLanding && (<button onClick={onBack} className="p-2 hover:bg-green-700 rounded-full transition-all group text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>)}
-          <button onClick={() => setView(user ? 'market' : 'landing')} className="text-2xl font-black flex items-center gap-2 hover:opacity-80 transition text-white"><span className="text-3xl">🌾</span><span className="hidden md:inline">{t.appName}</span></button>
+          <button onClick={() => setView('landing')} className="text-2xl font-black flex items-center gap-2 hover:opacity-80 transition text-white"><span className="text-3xl">🌾</span><span className="hidden md:inline">{t.appName}</span></button>
         </div>
         <div className="flex items-center gap-4">
           {user ? (
-            <div className="flex items-center gap-3"><div className="hidden lg:flex items-center gap-2 px-4 py-1.5 bg-green-700/50 border border-green-500/30 rounded-full text-[11px] font-black uppercase tracking-wider text-green-50"><span>{user.name}</span></div><button onClick={onLogout} className="p-2 hover:bg-red-500/20 rounded-full transition text-green-200 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" /></svg></button></div>
-          ) : (<button onClick={() => setView('login')} className="px-6 py-2.5 rounded-full text-sm font-black transition-all bg-white text-green-600 hover:bg-green-50 shadow-md">{t.loginButton}</button>)}
+            <div className="flex items-center gap-3">
+              <div className="hidden lg:flex items-center gap-2 px-4 py-1.5 bg-green-700/50 border border-green-500/30 rounded-full text-[11px] font-black uppercase tracking-wider text-green-50">
+                <span>{user.name}</span>
+              </div>
+              <button onClick={onLogout} className="p-2 hover:bg-red-500/20 rounded-full transition text-green-200 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setView('login')} className="px-6 py-2.5 rounded-full text-sm font-black transition-all bg-white text-green-600 hover:bg-green-50 shadow-md">{t.loginButton}</button>
+          )}
           <div className="flex bg-green-700/50 rounded-full p-1 border border-green-500/30 shadow-inner">
             <button onClick={() => setLang(Language.SOMALI)} className={`px-4 py-1.5 rounded-full text-xs font-black transition-all ${lang === Language.SOMALI ? 'bg-white text-green-600 shadow-sm' : 'text-green-100 hover:text-white'}`}>SO</button>
             <button onClick={() => setLang(Language.ENGLISH)} className={`px-4 py-1.5 rounded-full text-xs font-black transition-all ${lang === Language.ENGLISH ? 'bg-white text-green-600 shadow-sm' : 'text-green-100 hover:text-white'}`}>EN</button>
@@ -465,16 +334,30 @@ const App: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [view, setView] = useState<ViewType>('landing');
+  const [appLoading, setAppLoading] = useState(true);
   const t = translations[lang];
 
   useEffect(() => { 
+    const unsubscribeAuth = onAuthChange((fbUser) => {
+      setUser(fbUser);
+      setAppLoading(false);
+      if (fbUser && view === 'login') setView('landing');
+    });
+
     const unsubscribeProducts = subscribeToProducts((data) => setProducts(data)); 
     const unsubscribeOrders = subscribeToOrders((data) => setOrders(data)); 
-    return () => { unsubscribeProducts(); unsubscribeOrders(); }; 
-  }, []);
+    
+    return () => { 
+      unsubscribeAuth(); 
+      unsubscribeProducts(); 
+      unsubscribeOrders(); 
+    }; 
+  }, [view]);
 
-  const handleLogin = (newUser: User) => { setUser(newUser); setView(newUser.role === UserRole.FARMER ? 'dashboard' : 'market'); };
-  const handleLogout = () => { setUser(null); setView('landing'); };
+  const handleLogout = async () => { 
+    await logoutFromFirebase();
+    setView('landing'); 
+  };
   
   const handleAddProduct = async (data: any) => { 
     if (!user) return; 
@@ -512,32 +395,85 @@ const App: React.FC = () => {
     setView('orders'); 
   };
 
+  if (appLoading) {
+    return <div className="min-screen flex items-center justify-center font-black text-green-600">Loading...</div>;
+  }
+
   return (
     <HashRouter>
       <div className="min-h-screen flex flex-col bg-white selection:bg-green-100">
         <Navbar lang={lang} setLang={setLang} user={user} onLogout={handleLogout} view={view} setView={setView} onBack={() => setView('landing')} />
         <main className="flex-grow">
-          {view === 'login' && <AuthScreen lang={lang} onLogin={handleLogin} onCancel={() => setView('landing')} />}
-          {(view === 'landing' && !user) && (
-            <div className="flex flex-col items-center justify-center min-h-[85vh] px-6 text-center fade-in bg-white">
-              <div className="relative mb-20 scale-125"><div className="absolute -inset-16 bg-green-50 blur-[100px] rounded-full"></div><div className="relative p-14 bg-white rounded-full shadow-2xl border-[10px] border-white ring-2 ring-green-50"><span className="text-9xl">🚜</span></div></div>
-              <h1 className="text-6xl md:text-8xl font-black mb-8 text-gray-900 tracking-tighter">{t.appName}</h1>
-              <p className="text-green-800/40 mb-16 max-w-sm font-bold text-2xl leading-relaxed">{t.tagline}</p>
-              <div className="flex flex-col gap-8 w-full max-w-sm">
-                <button onClick={() => setView('market')} className="group relative w-full py-7 bg-green-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl hover:bg-green-700 transition-all hover:-translate-y-2 active:scale-95"><span className="relative flex items-center justify-center gap-5">{t.customerLogin}</span></button>
-                <button onClick={() => setView('dashboard')} className="w-full py-7 bg-white text-green-700 border-4 border-green-100 rounded-[3rem] font-black text-2xl hover:bg-green-50 transition-all shadow-lg">I'm a Farmer</button>
+          {view === 'login' && <AuthScreen lang={lang} onCancel={() => setView('landing')} />}
+          
+          {(view === 'landing' || view === 'market') && (
+            <div className="fade-in">
+              {/* Hero Section for Landing View */}
+              {!user && view === 'landing' && (
+                <div className="flex flex-col items-center justify-center pt-16 pb-20 px-6 text-center bg-white border-b border-gray-50">
+                  <div className="relative mb-16 scale-110 md:scale-125">
+                    <div className="absolute -inset-16 bg-green-50 blur-[100px] rounded-full"></div>
+                    <div className="relative p-12 bg-white rounded-full shadow-2xl border-[10px] border-white ring-2 ring-green-50">
+                      <span className="text-8xl md:text-9xl">🚜</span>
+                    </div>
+                  </div>
+                  <h1 className="text-5xl md:text-8xl font-black mb-6 text-gray-900 tracking-tighter leading-none">{t.appName}</h1>
+                  <p className="text-green-800/40 mb-12 max-w-sm font-bold text-xl md:text-2xl leading-relaxed">{t.tagline}</p>
+                  
+                  <div className="flex flex-col md:flex-row gap-6 w-full max-w-2xl px-4">
+                    <button 
+                      onClick={() => {
+                        const marketSection = document.getElementById('market-section');
+                        marketSection?.scrollIntoView({ behavior: 'smooth' });
+                      }} 
+                      className="group relative flex-1 py-7 bg-green-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl hover:bg-green-700 transition-all hover:-translate-y-2 active:scale-95"
+                    >
+                      <span className="relative flex items-center justify-center gap-4">{t.customerLogin} <span className="text-3xl">🧺</span></span>
+                    </button>
+                    <button 
+                      onClick={() => setView('dashboard')} 
+                      className="flex-1 py-7 bg-white text-green-700 border-4 border-green-100 rounded-[3rem] font-black text-2xl hover:bg-green-50 transition-all shadow-lg hover:-translate-y-1 flex items-center justify-center gap-4"
+                    >
+                      {t.farmerLogin} <span className="text-3xl">👨‍🌾</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Product Marketplace - Always appears below or on market view */}
+              <div id="market-section" className="bg-white">
+                <Marketplace 
+                  lang={lang} 
+                  products={products} 
+                  onBuy={p => { if (!user) setView('login'); else setSelectedProduct(p); }} 
+                  hideHeader={view === 'landing' && !user}
+                />
               </div>
             </div>
           )}
-          {view === 'market' && <Marketplace lang={lang} products={products} onBuy={p => { if(!user) setView('login'); else setSelectedProduct(p); }} />}
+
           {view === 'dashboard' && <FarmerDashboard lang={lang} products={products} user={user} onAddProduct={handleAddProduct} onTriggerLogin={() => setView('login')} />}
+          
           {view === 'orders' && (
             <div className="p-6 max-w-3xl mx-auto fade-in pt-16 bg-white pb-32">
               <h2 className="text-5xl font-black text-gray-900 tracking-tighter mb-8">{t.myOrders}</h2>
               <div className="space-y-8">
-                {orders.length === 0 ? <p className="text-center py-40 border-4 border-dashed border-green-50 rounded-[4rem] text-green-800/20 font-black text-2xl">No orders found.</p> : orders.map(o => (
-                  <div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-sm border border-green-50 flex items-center gap-8 group hover:shadow-xl transition-all"><div className="w-20 h-20 bg-green-50 rounded-[2rem] flex items-center justify-center text-4xl group-hover:scale-110 transition">📦</div><div className="flex-grow flex justify-between"><div><div className="font-black text-gray-900 text-2xl">{o.productName}</div></div><div className="text-right"><div className="font-black text-green-600 text-3xl">${o.totalPrice}</div><div className="text-[10px] font-black px-6 py-2 rounded-full uppercase bg-yellow-50 text-yellow-600 mt-2">{o.status}</div></div></div></div>
-                ))}
+                {orders.length === 0 ? (
+                  <p className="text-center py-40 border-4 border-dashed border-green-50 rounded-[4rem] text-green-800/20 font-black text-2xl">No orders found.</p>
+                ) : (
+                  orders.map(o => (
+                    <div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-sm border border-green-50 flex items-center gap-8 group hover:shadow-xl transition-all">
+                      <div className="w-20 h-20 bg-green-50 rounded-[2rem] flex items-center justify-center text-4xl group-hover:scale-110 transition">📦</div>
+                      <div className="flex-grow flex justify-between">
+                        <div><div className="font-black text-gray-900 text-2xl">{o.productName}</div></div>
+                        <div className="text-right">
+                          <div className="font-black text-green-600 text-3xl">${o.totalPrice}</div>
+                          <div className="text-[10px] font-black px-6 py-2 rounded-full uppercase bg-yellow-50 text-yellow-600 mt-2">{o.status}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

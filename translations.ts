@@ -73,7 +73,9 @@ export const translations: Record<Language, any> = {
     passwordChanged: "Furaha si guul leh ayaa loo beddelay!",
     sendingEmail: "Waan soo diraynaa...",
     sendViaApp: "Ku dir Email App-kaaga",
-    emailInstruction: "Haddii aadan helin email-ka, riix badhanka hoose si aad ugu dirto code-ka iimeelkaaga adiga oo isticmaalaya App-kaaga."
+    emailInstruction: "Haddii aadan helin email-ka, riix badhanka hoose si aad ugu dirto code-ka iimeelkaaga adiga oo isticmaalaya App-kaaga.",
+    verifyEmailTitle: "Xaqiiji Email-kaaga",
+    verifyEmailSent: "Waxaan kuu soo dirnay email xaqiijin ah cinwaanka [email]. Fadlan xaqiiji ka dibna soo gal.",
   },
   [Language.ENGLISH]: {
     appName: "Somali Farmers",
@@ -146,6 +148,8 @@ export const translations: Record<Language, any> = {
     passwordChanged: "Password successfully changed!",
     sendingEmail: "Sending email...",
     sendViaApp: "Send via Email App",
-    emailInstruction: "If you didn't receive the automated email, click below to send the code to yourself via your email app."
+    emailInstruction: "If you didn't receive the automated email, click below to send the code to yourself via your email app.",
+    verifyEmailTitle: "Verify Your Email",
+    verifyEmailSent: "We have sent you a verification email to [email]. Please verify it and log in.",
   }
 };
