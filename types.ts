@@ -1,4 +1,5 @@
 
+
 export enum Language {
   SOMALI = 'so',
   ENGLISH = 'en'
@@ -9,12 +10,14 @@ export enum UserRole {
   CUSTOMER = 'customer'
 }
 
+// Added photoURL property to the User interface to fix Property 'photoURL' does not exist on type 'User' errors
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
   location?: string;
+  photoURL?: string | null;
 }
 
 export interface Product {

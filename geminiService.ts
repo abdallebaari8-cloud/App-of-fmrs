@@ -12,7 +12,7 @@ const staticPitches: Record<string, string> = {
   "Galley": "Galleyda Lower Shabelle waa mid tayo sare leh oo aad u macaan, ku tijaabi cashadaada.",
   "Karooto": "Karooto cusub oo Afgooye laga soo guray, waxtar u leh caafimaadkaaga iyo quruxda cuntada.",
   "Baradho": "Baradhoda Baidoa waa kuwa ugu wanaagsan ee aad ku darsan karto suugada ama shiilidda.",
-  "Bamiye": "Bamiyahan yar-yar ee curdinka ah waxay u fiican yihiin caafimaadka caloosha iyo dhadhan fiican.",
+  "Bamiye": "Bamiyahan yar-yar ee curdinka ah waxay u fiican yihiin caafimaadka caloosha si dhadhan fiican.",
   "Girin": "Girintan (Wheat) waa mid lagu soo dhex saaray carada barwaaqada ah ee Jowhar, waa mid dabiici ah.",
   "Digir": "Digirta Baidoa waa mid aad u karsanta, protein badanna laga helo. Waa cuntada dhabta ah ee dhulkeena.",
   "Khayaar": "Khayaarkan cusub ee Afgooye waa mid qaboow oo ku habboon xilliyada kuleylka ee saladka.",
@@ -40,10 +40,8 @@ export const getAIPitch = async (productName: string, location: string): Promise
   }
 
   try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("API Key missing");
-
-    const ai = new GoogleGenAI({ apiKey });
+    // Correct initialization using process.env.API_KEY directly as a named parameter
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -53,6 +51,7 @@ export const getAIPitch = async (productName: string, location: string): Promise
       }
     });
     
+    // Accessing text as a property, not a method, as per guidelines
     const result = response.text || "Dalag cusub oo beerta laga keenay, tayo sare leh.";
     pitchCache[cacheKey] = result;
     return result;
@@ -67,10 +66,8 @@ export const getAIPitch = async (productName: string, location: string): Promise
  */
 export const findProductsForNeeds = async (userInput: string, products: Product[]): Promise<string[]> => {
   try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("API Key missing");
-
-    const ai = new GoogleGenAI({ apiKey });
+    // Correct initialization using process.env.API_KEY directly as a named parameter
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const productListString = products.map(p => `${p.id}: ${p.name} (${p.category})`).join(', ');
     
     const response = await ai.models.generateContent({
@@ -91,6 +88,7 @@ export const findProductsForNeeds = async (userInput: string, products: Product[
       }
     });
 
+    // Accessing text as a property
     let text = (response.text || "[]").trim();
     
     // Clean potential markdown wrappers

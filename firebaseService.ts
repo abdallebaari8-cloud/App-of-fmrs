@@ -7,6 +7,9 @@ import {
   onAuthStateChanged, 
   signOut,
   sendEmailVerification,
+  updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider,
   User as FirebaseUser
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { Product, Order, User, UserRole } from "./types.ts";
@@ -24,12 +27,14 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
 /** 
  * --- LOCAL PERSISTENCE ENGINE (Non-Auth Data) ---
  */
 const STORAGE_KEY_PRODUCTS = 'beeraleyda_products_v11';
 const STORAGE_KEY_ORDERS = 'beeraleyda_orders_v1';
+const STORAGE_KEY_USER_METADATA = 'beeraleyda_user_meta_v1';
 
 const safeGetItem = (key: string): string | null => {
   try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -37,6 +42,19 @@ const safeGetItem = (key: string): string | null => {
 
 const safeSetItem = (key: string, value: string) => {
   try { localStorage.setItem(key, value); } catch (e) {}
+};
+
+const getUserMeta = (uid: string) => {
+  const meta = safeGetItem(STORAGE_KEY_USER_METADATA);
+  if (!meta) return {};
+  try { return JSON.parse(meta)[uid] || {}; } catch { return {}; }
+};
+
+const saveUserMeta = (uid: string, data: any) => {
+  const meta = safeGetItem(STORAGE_KEY_USER_METADATA);
+  let allMeta = meta ? JSON.parse(meta) : {};
+  allMeta[uid] = { ...(allMeta[uid] || {}), ...data };
+  safeSetItem(STORAGE_KEY_USER_METADATA, JSON.stringify(allMeta));
 };
 
 const getInitialProducts = (): Product[] => [
@@ -110,22 +128,21 @@ export const placeOrderInDB = async (order: Omit<Order, 'id'>) => {
 /**
  * --- FIREBASE AUTHENTICATION WRAPPERS ---
  */
-export const onAuthChange = (callback: (user: User | null) => void) => {
+export const onAuthChange = (callback: (user: any | null) => void) => {
   return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
     if (fbUser) {
-      // Only treat as logged in if email is verified
-      if (!fbUser.emailVerified) {
-        // We do not treat them as authenticated in the app state if not verified
+      if (!fbUser.emailVerified && !fbUser.providerData.some(p => p.providerId === 'google.com')) {
         callback(null);
         return;
       }
-
+      const meta = getUserMeta(fbUser.uid);
       callback({
         id: fbUser.uid,
         name: fbUser.displayName || fbUser.email?.split('@')[0] || "User",
         email: fbUser.email || "",
-        role: UserRole.CUSTOMER,
-        location: "Mogadishu"
+        role: meta.role || UserRole.CUSTOMER,
+        location: meta.location || "Mogadishu",
+        photoURL: fbUser.photoURL || null
       });
     } else {
       callback(null);
@@ -138,17 +155,33 @@ export const loginWithFirebase = async (email: string, pass: string) => {
   return credential.user;
 };
 
-export const registerWithFirebase = async (email: string, pass: string) => {
+export const registerWithFirebase = async (email: string, pass: string, role: UserRole) => {
   const credential = await createUserWithEmailAndPassword(auth, email, pass);
   const user = credential.user;
   
-  // Send verification email
-  await sendEmailVerification(user);
+  saveUserMeta(user.uid, { role });
   
-  // Sign out immediately so they must verify and then log in
+  await sendEmailVerification(user);
   await signOut(auth);
+  return user;
+};
+
+export const loginWithGoogle = async () => {
+  const credential = await signInWithPopup(auth, googleProvider);
+  const user = credential.user;
+  
+  // If no role exists for this social user, default to CUSTOMER
+  const meta = getUserMeta(user.uid);
+  if (!meta.role) {
+    saveUserMeta(user.uid, { role: UserRole.CUSTOMER });
+  }
   
   return user;
+};
+
+export const updateUserProfilePhoto = async (photoURL: string) => {
+  if (!auth.currentUser) return;
+  await updateProfile(auth.currentUser, { photoURL });
 };
 
 export const logoutFromFirebase = async () => {
